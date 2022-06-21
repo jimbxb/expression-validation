@@ -336,7 +336,7 @@ def string():
 def f_string(with_pattern=True):
     def f(src, node):
         if isinstance(node, JoinedStr):
-            if with_pattern and any(lambda x: isinstance(x, FormattedValue), node.values):
+            if with_pattern and not any(lambda x: isinstance(x, FormattedValue), node.values):
                 return -1, ["f-string has no formatted values"]
             return 0, []
     return f
