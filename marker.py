@@ -1,5 +1,4 @@
 from ast import *
-from cmath import e
 from io import StringIO
 import sys
 import re
@@ -30,16 +29,29 @@ def check_part(answer, i, expected, ops, max_score):
 
 def check_expr(expr, expected, ops, max_score):
     try:
-        val, out = get_output(expr)
-        score, reasons = max_score, []
-        if out == str(expected) + "\n":
-            score, reasons = max_score - 1, ["used print"]
-        elif val != expected:
-            return 0, ["incorrect value"]
-        elif type(val) != type(expected):
-            return 0, ["incorrect type"]
-
         parsed = parse(expr)
+
+        if len(parsed.body) != 1:
+            return 0, ["multiple statements"]
+
+        score, reasons = max_score, []
+
+        parsed = parsed.body[0]
+        if not isinstance(parsed, Expr):
+            return 0, ["invalid statement"]
+
+        val, out = eval_(expr)
+        if isinstance(parsed.value, Call):
+            func = parsed.value.func
+            if isinstance(func, Name) and func.id == "print":
+                score, reasons = max_score - 1, ["print statement"]
+                val = out[:-1]
+
+        if str(val) == str(expected) and type(val) != type(expected):
+            score -= 1
+            reasons.append("incorrect expression type")
+        elif val != expected:
+            return 0, ["incorrect expression value"]
 
         for name, op in ops.items():
             deduction, reason = -1, [f"'{name}' unused"]
@@ -51,35 +63,31 @@ def check_expr(expr, expected, ops, max_score):
                     if ret[0] > deduction:
                         deduction, reason = ret
                 except Exception as e:
-                    print(f"internal {name}: {repr(e)}")
+                    print(f"internal {name}: {repr(e)}", file=sys.stderr)
 
+            score += deduction
             if reason is not None:
                 reasons.extend(reason)
-            score += deduction
-
+            if score <= 0:
+                break
         return max(0, score), reasons
-
     except Exception as e:
         return 0, [f"invalid expression ({e})"]
 
 
-def get_output(exp):
+def eval_(str):
     old_stdout = sys.stdout
-    sys.stdout = new_strio = StringIO()
-    try:
-        val = eval(exp)
-    except:
-        val = None
+    sys.stdout = new_stdout = StringIO()
+    out = eval(str)
     sys.stdout = old_stdout
-
-    return val, new_strio.getvalue()
+    return out, new_stdout.getvalue()
 
 
 def node_type(src, node):
     seg = get_source_segment(src, node)
     if seg is None:
         raise Exception(node)
-    return type(eval(seg))
+    return type(eval_(seg)[0])
 
 
 def any_of(*ops):

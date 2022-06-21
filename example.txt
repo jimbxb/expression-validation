@@ -1,5 +1,5 @@
 (a) Output: 'foo'
-'foo'[:] + ''
+print('foo'[:] + '')
 
 (b) Output: 1
 len({'foo': "a"}["foo"])
