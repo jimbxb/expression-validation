@@ -326,6 +326,28 @@ def compare(op, left_ty=None, right_ty=None):
     return f
 
 
+def string():
+    def f(src, node):
+        if isinstance(node, Constant) and type(node.value) == str:
+            return 0, []
+    return f
+
+
+def f_string(with_pattern=True):
+    def f(src, node):
+        if isinstance(node, JoinedStr):
+            if with_pattern and any(lambda x: isinstance(x, FormattedValue), node.values):
+                return -1, ["f-string has no formatted values"]
+            return 0, []
+    return f
+
+
+def instance(ctor):
+    def f(src, node):
+        if isinstance(node, ctor):
+            return 0, []
+
+
 STR_INDEX = index(str)
 LIST_INDEX = index(list)
 TUPLE_INDEX = index(tuple)
@@ -362,3 +384,16 @@ POW = binop("**")
 
 LEN = function_call("len", [None])
 SORTED = function_call("sorted", [None])
+
+LIST = instance(List)
+TUPLE = instance(Tuple)
+SET = instance(Set)
+DICT = instance(Dict)
+STRING = string()
+
+LIST_COMPREHENSION = instance(ListComp)
+SET_COMPREHENSION = instance(SetComp)
+GENERATOR = instance(GeneratorExp)
+
+LAMBDA = instance(Lambda)
+TERNARY = instance(IfExp)
