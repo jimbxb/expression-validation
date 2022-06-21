@@ -19,7 +19,8 @@ len({'foo': "a"}["foo"])
 1 and False
 ```
 
-```
+``` 
+>>> import marker
 >>> marker.check_file("./example.txt", [("foo", {"concat": marker.STR_CONCAT, "slice": marker.STR_SLICE}), \
 ...     (1, {"len": marker.LEN, "dict lookup": marker.DICT_LOOKUP}), \
 ...     (2.0, {"//": marker.INT_DIV, "+": marker.ADD}), \
