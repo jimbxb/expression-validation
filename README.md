@@ -25,5 +25,5 @@ len({'foo': "a"}["foo"])
 ...     (1, {"len": marker.LEN, "dict lookup": marker.DICT_LOOKUP}), \
 ...     (2.0, {"//": marker.INT_DIV, "+": marker.ADD}), \
 ...     (False, {"and": marker.boolop("and"), "1": marker.constant(1)})])
-{0: (2, []), 1: (2, []), 2: (1, ["'//' unused"]), 3: (2, [])}
+{0: (1, ['print statement']), 1: (2, []), 2: (1, ["'//' unused"]), 3: (2, [])}
 ```

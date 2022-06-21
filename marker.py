@@ -4,18 +4,20 @@ import sys
 import re
 
 
-def check_file(file, parts, max_score=2):
+def check_file(file, parts, max_score=2, deductions=None):
+    if deductions is None:
+        deductions = set()
     with open(file) as fp:
-        return check_answer(fp.read(), parts, max_score)
+        return check_answer(fp.read(), parts, max_score, deductions)
 
 
-def check_answer(answer, parts, max_score=2):
+def check_answer(answer, parts, max_score, prev_deduction):
     answer = answer + f"\n\n({chr(ord('a') + len(parts))})"
-    return {i: check_part(answer, i, *part, max_score)
+    return {i: check_part(answer, i, *part, max_score, prev_deduction)
             for i, part in enumerate(parts)}
 
 
-def check_part(answer, i, expected, ops, max_score):
+def check_part(answer, i, expected, ops, max_score, prev_deduction):
     pattern = "\n".join([f"\({chr(ord('a') + i)}\).*?$",
                          " *(.*?)$",
                          f"(?:\({chr(ord('a') + i + 1)}\))"])
@@ -24,10 +26,10 @@ def check_part(answer, i, expected, ops, max_score):
     if not match:
         return 0, ["no answer found"]
 
-    return check_expr(match.group(1), expected, ops, max_score)
+    return check_expr(match.group(1), expected, ops, max_score, prev_deduction)
 
 
-def check_expr(expr, expected, ops, max_score):
+def check_expr(expr, expected, ops, max_score, deductions):
     try:
         parsed = parse(expr)
 
@@ -40,12 +42,17 @@ def check_expr(expr, expected, ops, max_score):
         if not isinstance(parsed, Expr):
             return 0, ["invalid statement"]
 
-        val, out = eval_(expr)
-        if isinstance(parsed.value, Call):
-            func = parsed.value.func
-            if isinstance(func, Name) and func.id == "print":
-                score, reasons = max_score - 1, ["print statement"]
-                val = out[:-1]
+        deduct_print = isinstance(parsed.value, Call) \
+            and isinstance(parsed.value.func, Name) \
+            and parsed.value.func.id == "print"
+        if deduct_print:
+            call = parsed.value
+            if len(call.args) == 1 and len(call.keywords) == 0:
+                val = eval_(get_source_segment(expr, call.args[0]))[0]
+            else:
+                val = eval_(expr)[1].strip()
+        else:
+            val = eval_(expr)[0]
 
         if str(val) == str(expected) and type(val) != type(expected):
             score -= 1
@@ -67,9 +74,15 @@ def check_expr(expr, expected, ops, max_score):
 
             score += deduction
             if reason is not None:
-                reasons.extend(reason)
+                reasons += reason
             if score <= 0:
                 break
+
+        if deduct_print and "print" not in deductions:
+            deductions.add("print")
+            score = score - 1
+            reasons.append("print statement")
+
         return max(0, score), reasons
     except Exception as e:
         return 0, [f"invalid expression ({e})"]
@@ -104,7 +117,7 @@ def arg_types(src, args, name, tys):
         return
 
     if len(args) != len(tys):
-        return -1, [f"{name} expects {len(tys)} arguments"]
+        return -1, [f"expecting call to {name} with {len(tys)} arguments"]
 
     for i, (arg, ty) in enumerate(zip(args, tys)):
         if ty is None:
@@ -193,7 +206,7 @@ def index(ty):
     return f
 
 
-UN_OPS = {str(type(ctor())): op for op, ctor in [
+UN_OPS = {type(ctor()): op for op, ctor in [
     ("+", UAdd),
     ("-", USub),
     ("not", Not),
@@ -204,7 +217,7 @@ UN_OPS = {str(type(ctor())): op for op, ctor in [
 def unop(op, op_ty=None, exp_ty=None):
     def f(src, node):
         if isinstance(node, UnaryOp):
-            node_op = UN_OPS.get(str(type(node.op)))
+            node_op = UN_OPS.get(type(node.op))
             if node_op != op:
                 return None
 
@@ -221,7 +234,7 @@ def unop(op, op_ty=None, exp_ty=None):
     return f
 
 
-BIN_OPS = {str(type(ctor())): op for op, ctor in [
+BIN_OPS = {type(ctor()): op for op, ctor in [
     ("+", Add),
     ("-", Sub),
     ("*", Mult),
@@ -240,7 +253,7 @@ BIN_OPS = {str(type(ctor())): op for op, ctor in [
 def binop(op, left_ty=None, right_ty=None, exp_ty=None):
     def f(src, node):
         if isinstance(node, BinOp):
-            node_op = BIN_OPS.get(str(type(node.op)))
+            node_op = BIN_OPS.get(type(node.op))
             if node_op != op:
                 return None
 
@@ -263,7 +276,7 @@ def binop(op, left_ty=None, right_ty=None, exp_ty=None):
     return f
 
 
-BOOL_OPS = {str(type(ctor())): op for op, ctor in [
+BOOL_OPS = {type(ctor()): op for op, ctor in [
     ("and", And),
     ("or", Or)
 ]}
@@ -272,7 +285,7 @@ BOOL_OPS = {str(type(ctor())): op for op, ctor in [
 def boolop(op, left_ty=None, right_ty=None, exp_ty=None):
     def f(src, node):
         if isinstance(node, BoolOp):
-            node_op = BOOL_OPS.get(str(type(node.op)))
+            node_op = BOOL_OPS.get(type(node.op))
             if node_op != op:
                 return None
 
@@ -295,7 +308,7 @@ def boolop(op, left_ty=None, right_ty=None, exp_ty=None):
     return f
 
 
-CMP_OPS = {str(type(ctor())): op for op, ctor in [
+CMP_OPS = {type(ctor()): op for op, ctor in [
     ("==", Eq),
     ("!=", NotEq),
     ("<", Lt),
@@ -311,7 +324,7 @@ CMP_OPS = {str(type(ctor())): op for op, ctor in [
 
 def compare(op, left_ty=None, right_ty=None):
     def helper(src, left, right, cmp):
-        cmp_op = CMP_OPS.get(str(type(cmp)))
+        cmp_op = CMP_OPS.get(type(cmp))
         if cmp_op != op:
             return -1, [f"used {cmp_op}, expecting {op}"]
 
@@ -368,6 +381,12 @@ TUPLE_SLICE = slice(tuple)
 STR_CONCAT = binop("+", exp_ty=str)
 LIST_CONCAT = binop("+", exp_ty=list)
 TUPLE_CONCAT = binop("+", exp_ty=tuple)
+CONCAT = any_of(STR_CONCAT, LIST_CONCAT, TUPLE_CONCAT)
+
+STR_REPLICATE = binop("*", exp_ty=str)
+LIST_REPLICATE = binop("*", exp_ty=list)
+TUPLE_REPLICATE = binop("*", exp_ty=tuple)
+REPLICATE = any_of(STR_REPLICATE, LIST_REPLICATE, TUPLE_REPLICATE)
 
 DICT_LOOKUP = any_of(
     method_call(dict, "get", [None]),
@@ -375,19 +394,20 @@ DICT_LOOKUP = any_of(
     index(dict)
 )
 
-ADD = binop("+")
 INT_ADD = binop("+", exp_ty=int)
 FLOAT_ADD = binop("+", exp_ty=float)
-SUB = binop("-")
+ADD = any_of(INT_ADD, FLOAT_ADD)
 INT_SUB = binop("-", exp_ty=int)
 FLOAT_SUB = binop("-", exp_ty=float)
-MULT = binop("*")
+SUB = any_of(INT_SUB, FLOAT_SUB)
 INT_MULT = binop("*", exp_ty=int)
 FLOAT_MULT = binop("*", exp_ty=float)
-DIV = any_of(binop("/"), binop("//"))
+MULT = any_of(INT_MULT, FLOAT_MULT)
 INT_DIV = binop("//", exp_ty=int)
-FLOAT_DIV = binop("/", exp_ty=float)
-MOD = binop("%")
+FLOOR_DIV = binop("//")
+FLOAT_DIV = binop("/")
+DIV = any_of(FLOOR_DIV, FLOAT_DIV)
+MOD = any_of(binop("%", exp_ty=ty) for ty in [int, float])
 POW = binop("**")
 
 LEN = function_call("len", [None])
@@ -397,10 +417,15 @@ LIST = instance(List)
 TUPLE = instance(Tuple)
 SET = instance(Set)
 DICT = instance(Dict)
+
 STRING = constant(ty=str)
+F_STRING = f_string()
+F_STRING_NO_PATTERN = f_string(with_pattern=False)
+STR_FORMAT = binop("%", exp_ty=str)
 
 LIST_COMPREHENSION = instance(ListComp)
 SET_COMPREHENSION = instance(SetComp)
+DICT_COMPREHENSION = instance(DictComp)
 GENERATOR = instance(GeneratorExp)
 
 LAMBDA = instance(Lambda)

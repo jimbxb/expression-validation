@@ -1,8 +1,8 @@
 (a) Output: 'foo'
-print('foo'[:] + '')
+print('foo'[:]+'')
 
 (b) Output: 1
-len({'foo': "a"}["foo"])
+print(len({'foo': "a"}["foo"]))
 
 (c) Output: 2.0
 1 + 1 / 1
