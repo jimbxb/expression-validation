@@ -1,11 +1,11 @@
-(a) Output: 'foo'
-print('foo'[:]+'')
+(a) 'foo', using string concatenation and string slicing 
+'foo'[:] + ''
 
-(b) Output: 1
-print(len({'foo': "a"}["foo"]))
+(b) 1, using len and dictionary lookup and .index
+print({3: "ab"}[len("foo")].index("b"))
 
-(c) Output: 2.0
+(c) 2.0, using // and +
 1 + 1 / 1
 
-(d) Output: False
+(d) False, using and and 1
 1 and False

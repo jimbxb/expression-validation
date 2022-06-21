@@ -9,8 +9,8 @@ A tool to grade written expressions, checking if the required operations are use
 (a) 'foo', using string concatenation and string slicing 
 'foo'[:] + ''
 
-(b) 1, using len and dictionary lookup 
-len({'foo': "a"}["foo"])
+(b) 1, using len and dictionary lookup and .index
+print({3: "ab"}[len("foo")].index("b"))
 
 (c) 2.0, using // and +
 1 + 1 / 1
@@ -19,11 +19,13 @@ len({'foo': "a"}["foo"])
 1 and False
 ```
 
-``` 
->>> import marker
->>> marker.check_file("./example.txt", [("foo", {"concat": marker.STR_CONCAT, "slice": marker.STR_SLICE}), \
-...     (1, {"len": marker.LEN, "dict lookup": marker.DICT_LOOKUP}), \
-...     (2.0, {"//": marker.INT_DIV, "+": marker.ADD}), \
-...     (False, {"and": marker.boolop("and"), "1": marker.constant(1)})])
+```py
+>>> import marker as m
+>>> m.check_file("./example.txt", [ \
+...     ("foo", {"concat": m.STR_CONCAT, "slice": m.STR_SLICE}), \
+...     (1, {"len": m.LEN, "dict lookup": m.DICT_LOOKUP, "index": m.INDEX}), \
+...     (2.0, {"//": m.INT_DIV, "+": m.ADD}), \
+...     (False, {"and": m.boolop("and"), "1": m.constant(1)}) \
+... ])
 {0: (1, ['print statement']), 1: (2, []), 2: (1, ["'//' unused"]), 3: (2, [])}
 ```

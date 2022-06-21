@@ -54,11 +54,14 @@ def check_expr(expr, expected, ops, max_score, deductions):
         else:
             val = eval_(expr)[0]
 
-        if str(val) == str(expected) and type(val) != type(expected):
+        val_ty = type(val)
+        expected_ty = type(expected)
+        if str(val) == str(expected) and val_ty != expected_ty:
             score -= 1
-            reasons.append("incorrect expression type")
+            reasons.append(
+                f"incorrect expression type {val_ty.__name__}, expecting {expected_ty.__name__}")
         elif val != expected:
-            return 0, ["incorrect expression value"]
+            return 0, [f"incorrect expression value {repr(val)}, expecting {repr(expected)}"]
 
         for name, op in ops.items():
             deduction, reason = -1, [f"'{name}' unused"]
@@ -91,8 +94,10 @@ def check_expr(expr, expected, ops, max_score, deductions):
 def eval_(str):
     old_stdout = sys.stdout
     sys.stdout = new_stdout = StringIO()
-    out = eval(str)
-    sys.stdout = old_stdout
+    try:
+        out = eval(str)
+    finally:
+        sys.stdout = old_stdout
     return out, new_stdout.getvalue()
 
 
@@ -129,80 +134,91 @@ def arg_types(src, args, name, tys):
 
 def function_call(name, tys):
     def f(src, node):
-        if isinstance(node, Call) and isinstance(node.func, Name):
-            if node.func.id != name:
-                return -1, [f"call to {node.func.id}, expecting {name}"]
+        if not isinstance(node, Call):
+            return
+        if not isinstance(node.func, Name):
+            return
 
-            ret = arg_types(src, node.args, name, tys)
-            if ret is not None:
-                return ret
+        if node.func.id != name:
+            return -1, [f"call to {node.func.id}, expecting {name}"]
 
-            return 0, []
+        ret = arg_types(src, node.args, name, tys)
+        if ret is not None:
+            return ret
+
+        return 0, []
     return f
 
 
 def method_call(obj_ty, name, tys=None):
     def f(src, node):
-        if isinstance(node, Call) and isinstance(node.func, Attribute):
-            if node.func.attr != name:
-                return -1, [f"method call to {node.func.attr}, expecting {name}"]
+        if not isinstance(node, Call):
+            return
+        if not isinstance(node.func, Attribute):
+            return
 
-            func_ty = node_type(src, node.func.value)
-            if obj_ty is not None and node_type(src, node.func.value) != obj_ty:
-                return -1, [f"object in method call to {name} of type {func_ty.__name__}, expecting {obj_ty}"]
+        if node.func.attr != name:
+            return -1, [f"method call to {node.func.attr}, expecting {name}"]
 
-            ret = arg_types(src, node.args, name, tys)
-            if ret is not None:
-                return ret
+        func_ty = node_type(src, node.func.value)
+        if obj_ty is not None and node_type(src, node.func.value) != obj_ty:
+            return -1, [f"object in method call to {name} of type {func_ty.__name__}, expecting {obj_ty}"]
 
-            return 0, []
+        ret = arg_types(src, node.args, name, tys)
+        if ret is not None:
+            return ret
+
+        return 0, []
     return f
 
 
 def constant(val=None, ty=None):
     def f(src, node):
-        if isinstance(node, Constant):
+        if not isinstance(node, Constant):
+            return
+
+        if val is not None:
+            if node.value != val or type(node.value) != type(val):
+                return -1, [f"incorrect constant value {node.value}, expecting {val}"]
+
+        if ty is not None:
             val_ty = type(node.value)
+            if val_ty != ty:
+                return -1, [f"incorrect constant value {val_ty} of type {type(node.value).__name__}, expecting {ty}"]
 
-            if val is not None:
-                if node.value != val or type(node.value) != type(val):
-                    return -1, [f"incorrect constant value {node.value}, expecting {val}"]
-
-            if ty is not None:
-                if val_ty != ty:
-                    return -1, [f"incorrect constant value {val_ty} of type {type(node.value).__name__}, expecting {ty}"]
-
-            return 0, []
+        return 0, []
     return f
 
 
 def slice(ty=None):
     def f(src, node):
-        if isinstance(node, Subscript):
-            if not isinstance(node.slice, Slice):
-                return -1, ["used index, expecting slice"]
+        if not isinstance(node, Subscript):
+            return
+        if not isinstance(node.slice, Slice):
+            return -1, ["used index, expecting slice"]
 
-            if ty is not None:
-                slc_ty = node_type(src, node.value)
-                if slc_ty != ty:
-                    return -1, [f"slice of type {slc_ty.__name__}, expecting {ty.__name__}"]
+        if ty is not None:
+            slc_ty = node_type(src, node.value)
+            if slc_ty != ty:
+                return -1, [f"slice of type {slc_ty.__name__}, expecting {ty.__name__}"]
 
-            return 0, []
+        return 0, []
     return f
 
 
 def index(ty):
     def f(src, node):
-        if isinstance(node, Subscript):
-            if isinstance(node.slice, Slice):
-                return -1, ["used slice, expecting index"]
+        if not isinstance(node, Subscript):
+            return
+        if isinstance(node.slice, Slice):
+            return -1, ["used slice, expecting index"]
 
-            if ty is not None:
-                val_ty = node_type(src, node.value)
-                if val_ty != ty:
-                    return -1, [f"index of type {val_ty.__name__}, expecting {ty.__name__}"]
+        if ty is not None:
+            val_ty = node_type(src, node.value)
+            if val_ty != ty:
+                return -1, [f"index of type {val_ty.__name__}, expecting {ty.__name__}"]
 
-            return 0, []
+        return 0, []
     return f
 
 
@@ -216,21 +232,24 @@ UN_OPS = {type(ctor()): op for op, ctor in [
 
 def unop(op, op_ty=None, exp_ty=None):
     def f(src, node):
-        if isinstance(node, UnaryOp):
-            node_op = UN_OPS.get(type(node.op))
-            if node_op != op:
-                return None
+        if not isinstance(node, UnaryOp):
+            return
 
-            if exp_ty is not None:
-                node_ty = node_type(node)
-                if node_ty is not exp_ty:
-                    return -1, [f"{op} use results in type {node_ty.__name__}, expecting {exp_ty.__name__}"]
+        node_op = UN_OPS.get(type(node.op))
+        if node_op != op:
+            return
 
-            if op_ty is not None:
-                val_ty = node_type(src, node.operand)
-                if val_ty != op_ty:
-                    return -1, [f"operand of {op} has type {val_ty.__name__}, expecting {op_ty.__name__}"]
-            return 0, []
+        if exp_ty is not None:
+            node_ty = node_type(node)
+            if node_ty is not exp_ty:
+                return -1, [f"{op} use results in type {node_ty.__name__}, expecting {exp_ty.__name__}"]
+
+        if op_ty is not None:
+            val_ty = node_type(src, node.operand)
+            if val_ty != op_ty:
+                return -1, [f"operand of {op} has type {val_ty.__name__}, expecting {op_ty.__name__}"]
+
+        return 0, []
     return f
 
 
@@ -252,27 +271,29 @@ BIN_OPS = {type(ctor()): op for op, ctor in [
 
 def binop(op, left_ty=None, right_ty=None, exp_ty=None):
     def f(src, node):
-        if isinstance(node, BinOp):
-            node_op = BIN_OPS.get(type(node.op))
-            if node_op != op:
-                return None
+        if not isinstance(node, BinOp):
+            return
 
-            if exp_ty is not None:
-                node_ty = node_type(src, node)
-                if node_ty is not exp_ty:
-                    return -1, [f"{op} use results in type {node_ty.__name__}, expecting {exp_ty.__name__}"]
+        node_op = BIN_OPS.get(type(node.op))
+        if node_op != op:
+            return
 
-            deductions, reasons = 0, []
-            for ty, attr in [(left_ty, "left"), (right_ty, "right")]:
-                if ty is None:
-                    continue
-                val_ty = node_type(src, getattr(node, attr))
-                if val_ty != ty:
-                    deductions = -1
-                    reasons.append(
-                        f"{attr} operand of {op} has type {val_ty.__name__}, expecting {ty.__name__}")
+        if exp_ty is not None:
+            node_ty = node_type(src, node)
+            if node_ty is not exp_ty:
+                return -1, [f"{op} use results in type {node_ty.__name__}, expecting {exp_ty.__name__}"]
 
-            return deductions, reasons
+        deductions, reasons = 0, []
+        for ty, attr in [(left_ty, "left"), (right_ty, "right")]:
+            if ty is None:
+                continue
+            val_ty = node_type(src, getattr(node, attr))
+            if val_ty != ty:
+                deductions = -1
+                reasons.append(
+                    f"{attr} operand of {op} has type {val_ty.__name__}, expecting {ty.__name__}")
+
+        return deductions, reasons
     return f
 
 
@@ -284,27 +305,29 @@ BOOL_OPS = {type(ctor()): op for op, ctor in [
 
 def boolop(op, left_ty=None, right_ty=None, exp_ty=None):
     def f(src, node):
-        if isinstance(node, BoolOp):
-            node_op = BOOL_OPS.get(type(node.op))
-            if node_op != op:
-                return None
+        if not isinstance(node, BoolOp):
+            return
 
-            if exp_ty is not None:
-                node_ty = node_type(node)
-                if node_ty is not exp_ty:
-                    return -1, [f"{op} use results in type {node_ty.__name__}, expecting {exp_ty.__name__}"]
+        node_op = BOOL_OPS.get(type(node.op))
+        if node_op != op:
+            return
 
-            deductions, reasons = 0, []
-            for i, (ty, attr) in enumerate([(left_ty, "left"), (right_ty, "right")]):
-                if ty is None:
-                    continue
-                val_ty = node_type(src, node.values[i])
-                if val_ty != ty:
-                    deductions = -1
-                    reasons.append(
-                        f"{attr} operand of {op} has type {val_ty.__name__}, expecting {ty.__name__}")
+        if exp_ty is not None:
+            node_ty = node_type(node)
+            if node_ty is not exp_ty:
+                return -1, [f"{op} use results in type {node_ty.__name__}, expecting {exp_ty.__name__}"]
 
-            return deductions, reasons
+        deductions, reasons = 0, []
+        for i, (ty, attr) in enumerate([(left_ty, "left"), (right_ty, "right")]):
+            if ty is None:
+                continue
+            val_ty = node_type(src, node.values[i])
+            if val_ty != ty:
+                deductions = -1
+                reasons.append(
+                    f"{attr} operand of {op} has type {val_ty.__name__}, expecting {ty.__name__}")
+
+        return deductions, reasons
     return f
 
 
@@ -341,32 +364,35 @@ def compare(op, left_ty=None, right_ty=None):
         return deductions, reasons
 
     def f(src, node):
-        if isinstance(node, Compare):
-            cmp_ops = list(zip([node.left] + node.comparators[:-1],
-                               node.comparators,
-                               node.ops))
+        if not isinstance(node, Compare):
+            return
 
-            deductions = [helper(src, *x) for x in cmp_ops]
-            deductions = [x for x in deductions if x is not None]
+        deductions = [helper(src, *x) for x in zip([node.left] + node.comparators,
+                                                   node.comparators,
+                                                   node.ops)]
+        deductions = [x for x in deductions if x is not None]
 
-            if deductions:
-                return sorted(deductions)[-1]
+        if deductions:
+            return sorted(deductions)[-1]
     return f
 
 
 def f_string(with_pattern=True):
     def f(src, node):
-        if isinstance(node, JoinedStr):
-            if with_pattern and not any(lambda x: isinstance(x, FormattedValue), node.values):
-                return -1, ["f-string has no formatted values"]
-            return 0, []
+        if not isinstance(node, JoinedStr):
+            return
+
+        if with_pattern and not any(lambda x: isinstance(x, FormattedValue), node.values):
+            return -1, ["f-string has no formatted values"]
+        return 0, []
     return f
 
 
 def instance(ctor):
     def f(src, node):
-        if isinstance(node, ctor):
-            return 0, []
+        if not isinstance(node, ctor):
+            return
+        return 0, []
 
 
 STR_INDEX = index(str)
