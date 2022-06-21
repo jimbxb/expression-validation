@@ -51,7 +51,6 @@ def check_expr(expr, expected, ops, max_score):
                     if ret[0] > deduction:
                         deduction, reason = ret
                 except Exception as e:
-                    print(e.__traceback__.tb_next.tb_lineno)
                     print(f"internal {name}: {repr(e)}")
 
             if reason is not None:
@@ -139,12 +138,20 @@ def method_call(obj_ty, name, tys=None):
     return f
 
 
-def constant(val):
+def constant(val=None, ty=None):
     def f(src, node):
         if isinstance(node, Constant):
-            if node.value == val:
-                return 0, []
-            return -1, [f"incorrect constant value {node.value}, expecting {val}"]
+            val_ty = type(node.value)
+
+            if val is not None:
+                if node.value != val or type(node.value) != type(val):
+                    return -1, [f"incorrect constant value {node.value}, expecting {val}"]
+
+            if ty is not None:
+                if val_ty != ty:
+                    return -1, [f"incorrect constant value {val_ty} of type {type(node.value).__name__}, expecting {ty}"]
+
+            return 0, []
     return f
 
 
@@ -326,13 +333,6 @@ def compare(op, left_ty=None, right_ty=None):
     return f
 
 
-def string():
-    def f(src, node):
-        if isinstance(node, Constant) and type(node.value) == str:
-            return 0, []
-    return f
-
-
 def f_string(with_pattern=True):
     def f(src, node):
         if isinstance(node, JoinedStr):
@@ -389,7 +389,7 @@ LIST = instance(List)
 TUPLE = instance(Tuple)
 SET = instance(Set)
 DICT = instance(Dict)
-STRING = string()
+STRING = constant(ty=str)
 
 LIST_COMPREHENSION = instance(ListComp)
 SET_COMPREHENSION = instance(SetComp)
