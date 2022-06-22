@@ -99,7 +99,7 @@ def eval_out(str):
     old_stdout = sys.stdout
     sys.stdout = new_stdout = StringIO()
     try:
-        out = eval(str)
+        out = eval(str, globals={})
     finally:
         sys.stdout = old_stdout
     return out, new_stdout.getvalue()
@@ -437,7 +437,9 @@ INT_DIV = binop("//", exp_ty=int)
 FLOOR_DIV = binop("//")
 FLOAT_DIV = binop("/")
 DIV = any_of(FLOOR_DIV, FLOAT_DIV)
-MOD = any_of(binop("%", exp_ty=ty) for ty in [int, float])
+INT_MOD = binop("%", exp_ty=int)
+FLOAT_MOD = binop("%", exp_ty=float)
+MOD = any_of(INT_MOD, FLOAT_MOD)
 POW = binop("**")
 
 LEN = function_call("len", [None])

@@ -7,7 +7,7 @@ A tool to grade written expressions, checking if the required operations are use
 ```sh
 > cat ./example.txt
 (a) 'foo', using string concatenation and string slicing 
-print('foo'[:] + '')
+print('')
 
 (b) 1, using len and dictionary lookup and .index
 print({3: "ab"}[len("foo")].index("b"))
