@@ -6,27 +6,30 @@ import re
 
 def check_file(file, parts, max_score=2, deductions=None):
     if deductions is None:
-        deductions = set()
+        deductions = {"print": False}
     with open(file) as fp:
         return check_answer(fp.read(), parts, max_score, deductions)
 
 
-def check_answer(answer, parts, max_score, prev_deduction):
+def check_answer(answer, parts, max_score, deductions):
     answer = answer + f"\n\n({chr(ord('a') + len(parts))})"
-    return {i: check_part(answer, i, *part, max_score, prev_deduction)
+    return {part_letter(i): check_part(answer, i, *part, max_score, deductions)
             for i, part in enumerate(parts)}
 
 
-def check_part(answer, i, expected, ops, max_score, prev_deduction):
-    pattern = "\n".join([f"\({chr(ord('a') + i)}\).*?$",
+def check_part(answer, i, expected, ops, max_score, deductions):
+    pattern = "\n".join([f"\({part_letter(i)}\).*?$",
                          " *(.*?)$",
-                         f"(?:\({chr(ord('a') + i + 1)}\))"])
+                        f"(?:\({part_letter(i + 1)}\))"])
 
     match = re.search(pattern, answer, flags=re.MULTILINE | re.DOTALL)
     if not match:
         return 0, ["no answer found"]
 
-    return check_expr(match.group(1), expected, ops, max_score, prev_deduction)
+    return check_expr(match.group(1), expected, ops, max_score, deductions)
+
+
+def part_letter(i): return chr(ord('a') + i)
 
 
 def check_expr(expr, expected, ops, max_score, deductions):
@@ -35,8 +38,6 @@ def check_expr(expr, expected, ops, max_score, deductions):
 
         if len(parsed.body) != 1:
             return 0, ["multiple statements"]
-
-        score, reasons = max_score, []
 
         parsed = parsed.body[0]
         if not isinstance(parsed, Expr):
@@ -48,30 +49,32 @@ def check_expr(expr, expected, ops, max_score, deductions):
         if deduct_print:
             call = parsed.value
             if len(call.args) == 1 and len(call.keywords) == 0:
-                val = eval_(get_source_segment(expr, call.args[0]))[0]
+                val = eval_out(get_source_segment(expr, call.args[0]))[0]
             else:
-                val = eval_(expr)[1].strip()
+                val = eval_out(expr)[1].strip()
         else:
-            val = eval_(expr)[0]
+            val = eval_out(expr)[0]
 
         val_ty = type(val)
         expected_ty = type(expected)
         if str(val) == str(expected) and val_ty != expected_ty:
-            score -= 1
-            reasons.append(
-                f"incorrect expression type {val_ty.__name__}, expecting {expected_ty.__name__}")
+            score = max_score - 1
+            reasons = [
+                f"incorrect expression type {val_ty.__name__}, expecting {expected_ty.__name__}"]
         elif val != expected:
             return 0, [f"incorrect expression value {repr(val)}, expecting {repr(expected)}"]
+        else:
+            score, reasons = max_score, []
 
         for name, op in ops.items():
             deduction, reason = -1, [f"'{name}' unused"]
             for node in walk(parsed):
                 try:
-                    ret = op(expr, node)
-                    if ret is None:
+                    deduction_reason = op(expr, node)
+                    if deduction_reason is None:
                         continue
-                    if ret[0] > deduction:
-                        deduction, reason = ret
+                    if deduction_reason[0] > deduction:
+                        deduction, reason = deduction_reason
                 except Exception as e:
                     print(f"internal {name}: {repr(e)}", file=sys.stderr)
 
@@ -81,9 +84,10 @@ def check_expr(expr, expected, ops, max_score, deductions):
             if score <= 0:
                 break
 
-        if deduct_print and "print" not in deductions:
-            deductions.add("print")
-            score = score - 1
+        if deduct_print and not deductions.get("print", False) and score > 0:
+            if "print" in deductions:
+                deductions["print"] = True
+            score -= 1
             reasons.append("print statement")
 
         return max(0, score), reasons
@@ -91,7 +95,7 @@ def check_expr(expr, expected, ops, max_score, deductions):
         return 0, [f"invalid expression ({e})"]
 
 
-def eval_(str):
+def eval_out(str):
     old_stdout = sys.stdout
     sys.stdout = new_stdout = StringIO()
     try:
@@ -105,7 +109,7 @@ def node_type(src, node):
     seg = get_source_segment(src, node)
     if seg is None:
         raise Exception(node)
-    return type(eval_(seg)[0])
+    return type(eval_out(seg)[0])
 
 
 def any_of(*ops):
