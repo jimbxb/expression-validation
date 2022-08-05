@@ -23,9 +23,9 @@ print({3: "ab"}[len("foo")].index("b"))
 >>> import marker as m
 >>> m.check_file("./example.txt", [ \
 ...     ("foo", {"concat": m.STR_CONCAT, "slice": m.STR_SLICE}), \
-...     (1, {"len": m.LEN, "dict lookup": m.DICT_LOOKUP, "index": m.INDEX}), \
+...     (1, {"len": m.LEN, "dict lookup": m.DICT_LOOKUP, "index": m.INDEX_METHOD}), \
 ...     (2.0, {"//": m.FLOOR_DIV, "+": m.ADD}), \
 ...     (False, {"and": m.boolop("and"), "1": m.constant(1)}) \
 ... ])
-{0: (1, ['print statement']), 1: (2, []), 2: (1, ["'//' unused"]), 3: (2, [])}
+{'a': (2, []), 'b': (1, ['print statement']), 'c': (1, ["'//' unused"]), 'd': (2, [])}
 ```

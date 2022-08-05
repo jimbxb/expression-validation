@@ -1,5 +1,5 @@
 (a) 'foo', using string concatenation and string slicing 
-print('')
+'foo' + ""[:]
 
 (b) 1, using len and dictionary lookup and .index
 print({3: "ab"}[len("foo")].index("b"))
